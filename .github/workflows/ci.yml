@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python (ruff, mypy, pytest com o pipeline ponta a ponta)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          python-version: '3.13'
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest --cov --cov-report=term-missing
+
+  pipeline:
+    name: Pipeline completo (123 dias) e qualidade de dados
+    runs-on: ubuntu-latest
+    needs: python
+    timeout-minutes: 20
+    env:
+      LANDING_ROOT: ${{ github.workspace }}/data/landing
+      LAKE_ROOT: ${{ github.workspace }}/data/lake
+      DBT_DUCKDB_PATH: ${{ github.workspace }}/data/warehouse/locabit.duckdb
+      SITE_ROOT: ${{ github.workspace }}/site
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          python-version: '3.13'
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: generate → ingest → dbt build → painel
+        run: uv run lakehouse run
+      - name: Frescor das fontes
+        run: uv run dbt source freshness --project-dir dbt --profiles-dir dbt
+      - name: Resumo da execução
+        run: |
+          uv run python - >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import os
+          import duckdb
+
+          def table(con, sql):
+              rel = con.execute(sql)
+              cols = [d[0] for d in rel.description]
+              rows = rel.fetchall()
+              lines = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
+              lines += ["| " + " | ".join(str(v) for v in row) + " |" for row in rows]
+              return "\n".join(lines)
+
+          con = duckdb.connect(os.environ["DBT_DUCKDB_PATH"], read_only=True)
+          print("## Indicadores\n")
+          print(table(con, "select * from marts.rpt_fleet_kpis"))
+          print("\n## Qualidade de dados\n")
+          print(table(con, "select * from marts.rpt_data_quality order by source"))
+          PY
+
+  terraform:
+    name: Terraform (fmt, validate, tflint, checkov)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+      - run: terraform fmt -check -recursive -diff
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+      - uses: terraform-linters/setup-tflint@v6
+      - run: tflint --init && tflint --format compact
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Checkov
+        run: pipx run checkov -d . --framework terraform --compact --quiet
