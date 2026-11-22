@@ -1,0 +1,74 @@
+[project]
+name = "it-asset-lakehouse"
+dynamic = ["version"]
+description = "Plataforma de dados de uma locadora fictícia de equipamentos de TI: ingestão idempotente, lakehouse em Parquet, dbt, Dagster, qualidade de dados e Terraform."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Lucas Santana Santos" }]
+requires-python = ">=3.12"
+dependencies = [
+  "duckdb>=1.4,<3",
+  "pyarrow>=20",
+  "pydantic>=2.11,<3",
+  "dagster>=1.13,<2",
+  "dagster-dbt>=0.29,<1",
+  "dbt-core>=1.10,<2",
+  "dbt-duckdb>=1.10,<2",
+  "matplotlib>=3.10,<4",
+]
+
+[project.scripts]
+lakehouse = "lakehouse.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=9",
+  "pytest-cov>=7",
+  "ruff>=0.15",
+  "mypy>=1.18",
+  "dagster-webserver>=1.13,<2",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/lakehouse/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lakehouse"]
+
+[tool.dagster]
+module_name = "lakehouse.definitions"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["dbt/target", "dbt/dbt_packages"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "N", "PTH", "RET", "C4"]
+ignore = ["RUF001", "RUF002", "RUF003", "S608"]  # S608: SQL montado só com identificadores do contrato, nunca entrada de usuário
+
+[tool.ruff.lint.per-file-ignores]
+# random é usado para simular dados reprodutíveis, não para segurança.
+"src/lakehouse/generator.py" = ["S311"]
+"tests/**" = ["S101", "S311"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["dagster_dbt.*", "matplotlib.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+
+[tool.coverage.run]
+source = ["lakehouse"]
+branch = true
