@@ -1,0 +1,5 @@
+project                     = "locabit-lakehouse"
+environment                 = "dev"
+aws_region                  = "sa-east-1"
+github_repository           = "lucassantana2301-bot/it-asset-lakehouse"
+create_github_oidc_provider = true
