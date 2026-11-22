@@ -1,0 +1,17 @@
+locabit:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', 'target/locabit.duckdb') }}"
+      threads: 4
+    # Mesmo projeto lendo o lake no S3 (bucket provisionado pelo Terraform em infra/terraform).
+    aws:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', 'target/locabit.duckdb') }}"
+      threads: 4
+      extensions: [httpfs, aws]
+      secrets:
+        - type: s3
+          provider: credential_chain
+          region: "{{ env_var('AWS_REGION', 'sa-east-1') }}"

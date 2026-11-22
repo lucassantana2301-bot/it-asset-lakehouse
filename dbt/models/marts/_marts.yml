@@ -1,0 +1,132 @@
+version: 2
+
+models:
+  - name: fct_mrr_movements
+    description: >
+      Movimentação mensal de MRR (receita recorrente mensal) por cliente. Uma linha por cliente e mês
+      em que o cliente tinha MRR no mês atual ou no anterior.
+    data_tests:
+      - unique_combination:
+          arguments:
+            combination_of_columns: [customer_id, month_start]
+    columns:
+      - {name: customer_id, data_type: varchar, data_tests: [not_null]}
+      - {name: month_start, data_type: date, data_tests: [not_null]}
+      - {name: previous_mrr, data_type: "decimal(18,2)", data_tests: [non_negative]}
+      - {name: mrr, data_type: "decimal(18,2)", data_tests: [non_negative]}
+      - {name: mrr_change, data_type: "decimal(18,2)"}
+      - name: movement_type
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [new, expansion, contraction, churn, reactivation, flat]
+
+  - name: fct_asset_health
+    description: Saúde dos equipamentos em uso (notebooks e desktops) nos últimos 14 dias e a ação recomendada.
+    columns:
+      - {name: asset_id, data_type: varchar, data_tests: [unique, not_null]}
+      - {name: category, data_type: varchar}
+      - {name: model, data_type: varchar}
+      - {name: customer_id, data_type: varchar}
+      - name: avg_cpu_pct_14d
+        data_type: double
+        data_tests:
+          - between: {arguments: {min_value: 0, max_value: 100}}
+      - {name: p95_cpu_pct_14d, data_type: double}
+      - {name: min_disk_free_pct_14d, data_type: double}
+      - name: battery_health_pct
+        data_type: double
+        data_tests:
+          - between: {arguments: {min_value: 0, max_value: 100}}
+      - {name: battery_change_per_30d, data_type: double}
+      - {name: last_seen_date, data_type: date}
+      - {name: days_since_last_seen, data_type: integer, data_tests: [non_negative]}
+      - name: recommended_action
+        data_type: varchar
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [ok, trocar_bateria, liberar_disco, subutilizado, investigar_sem_sinal]
+      - {name: data_until, data_type: date}
+
+  - name: fct_ticket_sla
+    description: Chamados com SLA de resolução por prioridade (P1 4h, P2 8h, P3 24h, P4 72h).
+    columns:
+      - {name: ticket_id, data_type: varchar, data_tests: [unique, not_null]}
+      - {name: customer_id, data_type: varchar}
+      - {name: asset_id, data_type: varchar}
+      - {name: priority, data_type: varchar, data_tests: [not_null]}
+      - {name: category, data_type: varchar}
+      - {name: opened_at, data_type: timestamp, data_tests: [not_null]}
+      - {name: closed_at, data_type: timestamp}
+      - {name: opened_month, data_type: date}
+      - {name: sla_hours, data_type: integer}
+      - {name: elapsed_hours, data_type: double, data_tests: [non_negative]}
+      - {name: is_closed, data_type: boolean}
+      - {name: is_breached, data_type: boolean}
+
+  - name: fct_reverse_logistics
+    description: Devoluções de equipamentos com tempo de coleta, trânsito e condição na chegada.
+    columns:
+      - {name: shipment_id, data_type: varchar, data_tests: [unique, not_null]}
+      - {name: asset_id, data_type: varchar, data_tests: [not_null]}
+      - {name: contract_id, data_type: varchar}
+      - {name: requested_date, data_type: date}
+      - {name: requested_month, data_type: date}
+      - {name: days_to_collect, data_type: double, data_tests: [non_negative]}
+      - {name: days_in_transit, data_type: double, data_tests: [non_negative]}
+      - {name: cycle_days, data_type: double, data_tests: [non_negative]}
+      - {name: condition, data_type: varchar}
+      - {name: is_completed, data_type: boolean}
+      - {name: has_issue, data_type: boolean}
+
+  - name: dim_customers
+    description: Clientes com o MRR e os assentos vigentes.
+    columns:
+      - {name: customer_id, data_type: varchar, data_tests: [unique, not_null]}
+      - {name: customer_name, data_type: varchar}
+      - {name: cnpj, data_type: varchar}
+      - {name: segment, data_type: varchar}
+      - {name: state, data_type: varchar}
+      - {name: customer_since, data_type: date}
+      - {name: current_mrr, data_type: "decimal(18,2)", data_tests: [non_negative]}
+      - {name: current_seats, data_type: integer, data_tests: [non_negative]}
+      - {name: is_active, data_type: boolean}
+
+  - name: rpt_fleet_kpis
+    description: Indicadores de topo do painel executivo (uma linha).
+    columns:
+      - {name: data_until, data_type: date, data_tests: [not_null]}
+      - {name: active_customers, data_type: integer}
+      - {name: mrr, data_type: "decimal(18,2)"}
+      - {name: churned_mrr_last_month, data_type: "decimal(18,2)"}
+      - {name: assets_deployed, data_type: integer}
+      - name: fleet_utilization
+        data_type: double
+        data_tests:
+          - between: {arguments: {min_value: 0, max_value: 1}}
+      - {name: sla_compliance_30d, data_type: double}
+      - {name: return_median_cycle_days, data_type: double}
+      - {name: return_issue_rate, data_type: double}
+      - {name: assets_needing_action, data_type: integer}
+      - name: quarantine_rate
+        data_type: double
+        data_tests:
+          - between:
+              arguments: {min_value: 0, max_value: 0.05}
+              config:
+                severity: warn
+
+  - name: rpt_data_quality
+    description: Volume, quarentena, frescor e órfãos por fonte.
+    columns:
+      - {name: source, data_type: varchar, data_tests: [unique, not_null]}
+      - {name: partitions, data_type: integer}
+      - {name: rows_read, data_type: bigint}
+      - {name: rows_quarantined, data_type: bigint}
+      - {name: quarantine_rate, data_type: double}
+      - {name: orphan_rows, data_type: bigint}
+      - {name: latest_partition, data_type: date}
+      - {name: last_ingested_at, data_type: timestamp}

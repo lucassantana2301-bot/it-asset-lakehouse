@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >
+      Camada bronze do lake: Parquet particionado por dia (dt=AAAA-MM-DD), gravado pela ingestão
+      depois da validação do contrato de cada fonte. Linhas reprovadas ficam em quarantine/.
+    meta:
+      external_location: "read_parquet('{{ env_var('LAKE_ROOT', '../lake') }}/bronze/{name}/dt=*/data.parquet', union_by_name = true)"
+    config:
+      loaded_at_field: _ingested_at
+      freshness:
+        warn_after: {count: 26, period: hour}
+        error_after: {count: 50, period: hour}
+    tables:
+      - name: customers
+        description: Cadastro de clientes do ERP (foto completa diária).
+      - name: contracts
+        description: Contratos do ERP (foto completa diária).
+      - name: assets
+        description: Inventário de equipamentos (foto completa diária).
+      - name: telemetry
+        description: Eventos do agente instalado nos equipamentos.
+      - name: tickets
+        description: Chamados do service desk (cada mudança de estado gera uma linha).
+      - name: shipments
+        description: Envios e coletas da logística (cada mudança de estado gera uma linha).
